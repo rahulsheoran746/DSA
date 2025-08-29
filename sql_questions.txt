@@ -278,5 +278,256 @@ FROM (
 ) AS ranked
 WHERE rnk <= 2;
 
+Q1.  Write a query to fetch each customer’s name, total number of claims, and total approved claim amount.
+Input Tables:
+Customer Table:
+customer_id	name	age	gender
+101	Rahul Sharma	35	M
+102	Priya Verma	29	F
+103	Amit Patel	42	M
+104	Neha Singh	31	F
+105	Sunil Mehra	48	M
+106	Ritu Gupta	27	F
 
-"data engineer" + "hiring"
+Claims Table:
+claim_id	customer_id	claim_amount	claim_status
+C001	101	10000	Approved
+C002	102	25000	Rejected
+C003	103	18000	Approved
+C004	104	32000	Pending
+C005	101	15000	Approved
+C006	106	21000	Approved
+
+Expected Output:
+name	total_claims	approved_claim_amount
+Rahul Sharma	2	25000
+Priya Verma	1	0
+Amit Patel	1	18000
+Neha Singh	1	0
+Sunil Mehra	0	0
+Ritu Gupta	1	21000
+		
+with claims_agg_data as (
+select customer_id, count(*) as total_claims,
+sum(case 
+	when claim_status = "Approved" then claim_amount
+	else 0
+	end) as approved_claim_amount
+from claims group by customer_id
+)
+select 
+name, 
+coalesce(total_claims, 0),
+coalesce(approved_claim_amount, 0)
+from customer c
+left join claims_agg_data cd
+on cd.customer_id = c.customer_id
+
+Q2. Customer Premium Behaviour Analysis
+Input Tables:
+Customer Table:
+customer_id	name	age	gender
+101	Rahul Sharma	35	M
+102	Priya Verma	29	F
+103	Amit Patel	42	M
+104	Neha Singh	31	F
+105	Sunil Mehra	48	M
+
+Policy Table:
+policy_id	customer_id	premium_amount	start_date	policy_type
+201	101	10000	10-01-2023	Health
+202	101	15000	15-06-2023	Health
+203	102	12000	20-03-2023	Health
+204	103	20000	05-02-2023	Critical Illness
+205	104	18000	01-08-2023	Health
+206	105	22000	18-07-2023	Health
+
+
+Problem Statement – For each customer, find total premium paid, number of policies purchased, average premium paid, and most recent policy start date. Also, categorize the customers based on total premium paid:
+•	‘High Value’ if total premium > 25000
+•	‘Medium Value’ if between 15000 and 25000
+•	‘Low Value’ otherwise
+Expected Output:
+customer_name	num_policies	total_premium	avg_premium	latest_policy_start_date	premium_category
+Rahul Sharma	2	25000	12500	15-06-2023	Medium Value
+Sunil Mehra	1	22000	22000	18-07-2023	Medium Value
+Neha Singh	1	18000	18000	01-08-2023	Medium Value
+Amit Patel	1	20000	20000	05-02-2023	Medium Value
+Priya Verma	1	12000	12000	20-03-2023	Low Value
+
+WITH policy_details AS (
+    SELECT
+        customer_id,
+        COUNT(DISTINCT policy_id) AS num_policies,
+        SUM(premium_amount) AS total_premium,
+        AVG(premium_amount) AS avg_premium,
+        MAX(start_date) AS latest_policy_start_date,
+        CASE 
+            WHEN SUM(premium_amount) > 25000 THEN 'High Value'
+            WHEN SUM(premium_amount) BETWEEN 15000 AND 25000 THEN 'Medium Value'
+            ELSE 'Low Value'
+        END AS premium_category
+    FROM policy 
+    GROUP BY customer_id
+)
+SELECT 
+    c.name AS customer_name,
+    COALESCE(p.num_policies, 0) AS num_policies,
+    COALESCE(p.total_premium, 0) AS total_premium,
+    COALESCE(p.avg_premium, 0) AS avg_premium,
+    COALESCE(p.latest_policy_start_date, '1999-01-01') AS latest_policy_start_date,
+    COALESCE(p.premium_category, 'N/A') AS premium_category
+FROM customer c
+LEFT JOIN policy_details p
+    ON c.customer_id = p.customer_id
+ORDER BY c.customer_id;
+
+Q1. Write a PySpark script that:
+•	Reads both files from S3.
+•	Joins customer and policy data.
+•	Filters only Active policies.
+•	Calculates total premium amount paid by each customer.
+•	Returns the result as a DataFrame.
+Files:
+s3://insurance-data/customers.csv
+s3://insurance-data/policies.csv
+Schemas:
+customers.csv:
+customer_id,name,city
+C001,Rahul,Delhi
+C002,Anita,Mumbai
+C003,Ajay,Bangalore
+policies.csv:
+policy_id,customer_id,premium_amount,status
+P1001,C001,1200,Active
+P1002,C002,800,Inactive
+P1003,C001,500,Active
+P1004,C003,900,Active
+# File paths
+c_path = "s3://insurance-data/customers.csv"
+p_path = "s3://insurance-data/policies.csv"
+
+# Read CSVs
+c_df = spark.read.format("csv").option("header", True).load(c_path)
+p_df = spark.read.format("csv").option("header", True).load(p_path)
+
+# Join, filter only Active policies
+join_df = (
+    c_df.join(p_df, c_df.customer_id == p_df.customer_id, "inner")
+        .filter(p_df.status == "Active")
+        .select(c_df.customer_id, c_df.name, p_df.premium_amount)
+)
+
+# Aggregate total premium per customer
+final_df = join_df.groupBy("customer_id", "name").agg(
+    _sum("premium_amount").alias("total_amount")
+)
+
+# Show result
+final_df.show(truncate=False)
+
+
+Q2. Write a PySpark script that:
+•	Ranks transactions of each customer by amount (highest first).
+•	Returns top 2 transactions per customer.
+File: 
+s3://insurance-data/customer_transactions.csv
+Schema of file:
+customer_id,transaction_id,amount,transaction_date
+C001,T1001,500,2024-01-01
+C001,T1002,1200,2024-01-15
+C002,T1003,800,2024-02-01
+C001,T1004,400,2024-03-10
+C002,T1005,1000,2024-03-15
+
+# Read transactions file
+df = spark.read.format("csv").option("header", True).load("s3://insurance-data/customer_transactions.csv")
+
+# Convert amount to numeric (if needed, since CSV loads as string)
+df = df.withColumn("amount", col("amount").cast("int"))
+
+# Define window spec
+window_spec = Window.partitionBy("customer_id").orderBy(col("amount").desc())
+
+# Add rank column
+df = df.withColumn("rank", row_number().over(window_spec))
+
+# Filter top 2 per customer
+df = df.filter(col("rank").isin([1, 2]))
+
+df.show(truncate=False)
+
+Q3. Write a PySpark script that detect Gaps in Customer Transactions
+File:
+s3://lumiq-data/insurance/customer_transactions.csv
+Schema:
+customer_id	transaction_date
+C001	2023-01-10
+C001	2023-02-12
+C001	2023-04-15
+C002	2023-01-05
+C002	2023-03-07
+Task:
+•	Find missing months in customer payments.
+•	Flag if the gap between transactions is more than 30 days.
+Output Format:
+customer_id	transaction_date	prev_date	days_diff	missing_month_flag
+C001	2023-01-10	null	null	false
+C001	2023-02-12	2023-01-10	33	true
+C001	2023-04-15	2023-02-12	63	true
+C002	2023-01-05	null	null	false
+C002	2023-03-07	2023-01-05	61	true
+
+# Read CSV
+df = spark.read.format("csv").option("header", True).load("s3://lumiq-data/insurance/customer_transactions.csv")
+
+# Convert to date
+df = df.withColumn("transaction_date", to_date(col("transaction_date")))
+
+# Define window
+window_spec = Window.partitionBy("customer_id").orderBy(col("transaction_date"))
+
+# Previous transaction date
+df = df.withColumn("prev_date", lag("transaction_date").over(window_spec))
+
+# Days difference
+df = df.withColumn("days_diff", datediff(col("transaction_date"), col("prev_date")))
+
+# Missing month flag (gap > 30 days)
+df = df.withColumn("missing_month_flag", when(col("days_diff") > 30, True).otherwise(False))
+
+df.show(truncate=False)
+
+Q1. You are given a list of customer transactions in JSON format. Each record contains customer_id, transaction_id, and amount. Return the total transaction amount per customer.
+Sample Input:
+transactions = [
+    {"customer_id": "C001", "transaction_id": "T1001", "amount": 1200},
+    {"customer_id": "C002", "transaction_id": "T1002", "amount": 850},
+    {"customer_id": "C001", "transaction_id": "T1003", "amount": 500},
+    {"customer_id": "C003", "transaction_id": "T1004", "amount": 700},
+    {"customer_id": "C002", "transaction_id": "T1005", "amount": 150}
+]
+Expected Output:
+{
+    "C001": 1700,
+    "C002": 1000,
+    "C003": 700
+}
+
+final_ans = {}
+for row in transactions:
+    c_id = row['customer_id']
+    amt = row['amount']
+    final_ans[c_id] = final_ans.get(c_id, 0) + amt
+
+print(final_ans)
+
+
+
+
+
+
+
+
+
+
