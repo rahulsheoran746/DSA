@@ -522,6 +522,36 @@ for row in transactions:
 
 print(final_ans)
 
+Question:
+You are given the following tables:
+
+customers (customer_id, customer_name, …)
+
+rides (trip_id, customer_id, payment_id, …)
+
+payments (payment_id, payment_type, …)
+
+ratings (trip_id, rating, …)
+
+A customer is considered for loyalty calculation only if they paid using card or ryd_credit.
+
+Define a loyalty score as:
+
+10 points for each valid ride (paid using card or ryd_credit).
+
+5 points for each valid rating (i.e., if the customer rated such a ride).
+
+Write a SQL query to return the top 100 customers (by loyalty score), showing:
+
+customer_id
+
+customer_name
+
+loyalty_score
+
+Order the result by loyalty_score (descending) and then by customer_id (ascending).
+
+
 
 
 
