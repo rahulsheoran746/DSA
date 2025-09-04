@@ -552,6 +552,140 @@ loyalty_score
 Order the result by loyalty_score (descending) and then by customer_id (ascending).
 
 
+with cte as (
+    select
+    r.customer_id,
+    sum(case 
+        when p.payments_type  in ('card', 'ryd_credit') and ra.rating is not null then 1 else 0 end) as no_of_ratings,
+    sum(case
+        when p.payments_type  in ('card', 'ryd_credit')  then 1 else 0 end) as no_of_rides
+    from rides r
+    left join ratings ra 
+    on r.trip_id = ra.trip_id 
+    left join payments_types p 
+    on p.payment_id = r.payment_id
+    group by r.customer_id)
+
+select 
+c.customer_id,
+c.customer_name,
+(5 * coalesce(c1.no_of_ratings, 0) + 10*coalesce(c1.no_of_rides, 0)) as loyalty_score
+from customers c
+left join cte c1 
+on c1.customer_id = c.customer_id
+order by loyalty_score desc,  customer_id asc
+limit 100;
+
+
+with selected_rides as (
+    select 
+    trip_id,
+    customer_id
+    from rides r
+    join payments p 
+    on p.payment_id = r.payment_id
+    where p.payment_type in ('card', 'ryd_credit')
+),
+rides_count as (
+    select
+    customer_id,
+    count(*) as no_of_rides
+    from selected_rides
+    group by customer_id
+),
+ratings_count as (
+    select 
+    customer_id,
+    count(r.trip_id) as no_of_ratings
+    from selected_rides s
+    left join ratings r 
+    on r.trip_id = s.trip_id
+    group by customer_id
+),
+loyalty as (
+    select
+    c.customer_id,
+    c.customer_name,
+    coalesce(r.no_of_rides,0),
+    coalesce(ra.no_of_ratings,0),
+    (10 * coalesce(r.no_of_rides,0) + 5 * coalesce(ra.no_of_ratings,0)) as loyalty_score
+    from 
+    customers c 
+    left join rides_count r 
+    on r.customer_id = c.customer_id
+    left join ratings_count ra 
+    on ra.customer_id = c.customer_id
+)
+
+select 
+customer_id,
+customer_name,
+loyalty_score
+from loyalty
+order by loyalty_score desc, customer_id asc
+
+Q1 find hierarchy in company
+company_organization
+employee_id first_name  last_name   manager_id   
+5529    Jack    Simmons 5125
+5238    Maria   Popovich    5329
+5329    Dan Jacobsson   5125
+5009    Simone  Gudbois 5329
+5125    Albert  Koch    NULL
+5500    Jackie  Carlin  5529
+5118    Steve   Nicks   5952
+5012    Bonnie  Presley 5952
+5952    Harry   Raitt   5529
+5444    Sean    Elsam   5329
+This table shows all the employees and the ID of their direct manager.
+The task here is to return all Jack Simmons’ direct and indirect subordinates
+output
+employee_id employee_first_name employee_last_name  direct_manager_id   direct_manager_first_name   direct_manager_last_name    level
+5529    Jack    Simmons 5125    Albert  Koch    0
+5952    Harry   Raitt   5529    Jack    Simmons 1
+5500    Jackie  Carlin  5529    Jack    Simmons 1
+5012    Bonnie  Presley 5952    Harry   Raitt   2
+5118    Steve   Nicks   5952    Harry   Raitt   2
+
+sol: 
+with employee_hierarchy as (
+select 
+employee_id,
+first_name,
+last_name,
+manager_id,
+0 as level
+from
+company_organization
+where employee_id =  5529
+
+union all
+
+select 
+c.employee_id,
+c.first_name,
+c.last_name,
+c.manager_id,
+e.level + 1
+from company_organization c 
+join employee_hierarchy e 
+on c.manager_id = e.employee_id
+)
+select  
+eh.employee_id as employee_id,
+eh.first_name  as employee_first_name,
+eh.last_name as employee_last_name,
+eh.manager_id as direct_manager_id,
+e.first_name as direct_manager_first_name,
+e.last_name as direct_manager_last_name,
+eh.level as level
+from employee_hierarchy eh 
+left join company_organization e 
+on eh.manager_id = e.employee_id;
+
+
+
+
 
 
 
